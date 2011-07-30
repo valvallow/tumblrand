@@ -71,6 +71,18 @@
     (format "~a/~2,'0D/~2,'0D ~2,'0D:~2,'0D:~2,'0D"
             year month day-of-month hour minutes seconds)))
 
+;; TODO:
+;;  - define <type> abstruct class
+;;  - <type> has show-tumble method
+;;  - <type> has show-tumble-detail abstruct method
+;;  - show-tumble call show-tumble-details
+;;  - show-tumble-details implements concrete <type> class
+
+;; TODO:
+;;  - define mapping function for json(alist) named map-alist
+;;  - define recursive mapping function for json(alist) named walk-alist using map-alist
+;;  - recusive mapping escaped string '\"' to '\\\"' using walk-alist
+
 (define (show-tumble json id type)
   (let ((posts (vector-ref (assoc-ref json "posts") 0)))
     (let ((tumble-url (assoc-ref posts "url"))
