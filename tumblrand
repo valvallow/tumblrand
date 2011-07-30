@@ -1,0 +1,103 @@
+#!/usr/local/bin/gosh
+
+(use srfi-13)
+(use srfi-19)
+(use util.match :only (match-let1))
+(use rfc.http :only (http-get))
+(use rfc.json)
+(use rfc.822 :only (rfc822-parse-date))
+(use math.mt-random :only (mt-random-integer <mersenne-twister>))
+(use util.list)
+(use gauche.parseopt)
+
+;; http://valvallow.tumblr.com/api/read/json?num=1&type=quote
+
+(define (usage)
+  (print "usage: tumblrand [-i | -t | -j | -h] <id> <type>")
+  (print "   -i | id     ex : -i valvallow")
+  (print "   -t | type   ex : -t quote")
+  (print "   -j | json")
+  (print "   -h | help")
+  (exit 0))
+
+;; (param-pairs->string  '(start . 410)'(num . 1)'(type . quote))
+;; -> "?start=410&num=1&type=quote"
+(define (param-pairs->string . param-pairs)
+  (if (null? param-pairs)
+      ""
+      (let1 params (map (^e (string-append (x->string (car e))
+                                           "="
+                                           (x->string (cdr e))))
+                        param-pairs)
+        (apply string-append "?" (intersperse "&" params)))))
+
+;; (build-uri "/api/read/json" '(start . 410)'(num . 1)'(type . quote))
+;; -> "/api/read/json?start=410&num=1&type=quote"
+(define (build-uri request-uri . param-pairs)
+  (string-append request-uri (apply param-pairs->string param-pairs)))
+
+(define (tumble-uri . param-pairs)
+  (apply build-uri "/api/read/json" param-pairs))
+
+(define (tumble-server id)
+  (format "~a.tumblr.com" id))
+
+(define (tumble-json server uri)
+  (let1 str (values-ref (http-get server uri) 2)
+    (let1 matched (#/\{.*\}/ str)
+      (unless matched
+        (error str))
+      (parse-json-string (matched)))))
+
+(define (tumble-total-count server :optional (type ""))
+  (let1 uri (tumble-uri '(start . 0)'(num . 1)`(type . ,type))
+    (let1 json (tumble-json server uri)
+      (cdr (assoc "posts-total" json)))))
+
+(define (random-number total)
+  (mt-random-integer (make <mersenne-twister> :seed (sys-time)) total))
+
+(define (tumble-random-json id :optional (type ""))
+  (let1 server (tumble-server id)
+    (let1 total (tumble-total-count server type)
+      (tumble-json server
+                   (tumble-uri `(start . ,(random-number total))
+                                       '(num . 1)`(type . ,type))))))
+
+(define (format-date date-string)
+  (receive (year month day-of-month hour minutes
+                 seconds timezone day-of-week)
+      (rfc822-parse-date date-string)
+    (format "~a/~2,'0D/~2,'0D ~2,'0D:~2,'0D:~2,'0D"
+            year month day-of-month hour minutes seconds)))
+
+(define (show-tumble json id type)
+  (let ((posts (vector-ref (assoc-ref json "posts") 0)))
+    (let ((tumble-url (assoc-ref posts "url"))
+          (txt (assoc-ref posts #`",|type|-text"))
+          (date (assoc-ref posts "date")))
+      (print #`"id : ,(tumble-server id)")
+      (print #`"url : ,tumble-url")
+      (print #`"date : ,(format-date date)")
+      (print #`"type : ,type")
+      (print (or txt "")))))
+
+(define (main args)
+  (let-args (cdr args)
+      ((id "i|id=s")
+       (type "t|type=s")
+       (json "j|json")
+       (help "h|help" => usage)
+       . rest-args)
+    (let ((id (or id
+                  (and (not (null? rest-args))
+                       (car rest-args))
+                  (read-line)))
+          (type (or type
+                    (and (not (null? rest-args))
+                         (not (null? (cdr rest-args)))
+                         (cadr rest-args)))))
+      (let ((response (tumble-random-json id type)))
+        (if json
+            (print (construct-json-string response))
+            (show-tumble response id type))))))
