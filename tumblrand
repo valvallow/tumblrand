@@ -44,10 +44,9 @@
 
 (define (tumble-json server uri)
   (let1 str (values-ref (http-get server uri) 2)
-    (let1 matched (#/\{.*\}/ str)
-      (unless matched
-        (error str))
-      (parse-json-string (matched)))))
+    (let* ((idx (string-scan str #\{))
+           (json (substring str idx (- (string-length str) 1))))
+      (parse-json-string json))))
 
 (define (tumble-total-count server :optional (type ""))
   (let1 uri (tumble-uri '(start . 0)'(num . 1)`(type . ,type))
