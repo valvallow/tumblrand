@@ -2,6 +2,7 @@
 
 (use srfi-13)
 (use srfi-19)
+(use srfi-43)
 (use util.match :only (match-let1))
 (use rfc.http :only (http-get))
 (use rfc.json)
@@ -77,11 +78,6 @@
 ;;  - show-tumble call show-tumble-details
 ;;  - show-tumble-details implements concrete <type> class
 
-;; TODO:
-;;  - define mapping function for json(alist) named map-alist
-;;  - define recursive mapping function for json(alist) named walk-alist using map-alist
-;;  - recusive mapping escaped string '\"' to '\\\"' using walk-alist
-
 (define (show-tumble json id type)
   (let ((posts (vector-ref (assoc-ref json "posts") 0)))
     (let ((tumble-url (assoc-ref posts "url"))
@@ -92,6 +88,27 @@
       (print #`"date : ,(format-date date)")
       (print #`"type : ,type")
       (print (or txt "")))))
+
+(define (walk-json-alist alist :key (key-fun identity)(val-fun identity))
+  (define (junction x)
+    (cond ((pair? x)(walk-json-alist x :key-fun key-fun :val-fun val-fun))
+          ((vector? x)(vector-case x))
+          (else (val-fun x))))
+  (define (vector-case v)
+    (vector-map (^ (idx e)
+                   (junction e))
+                v))
+  (map (^l (cons (key-fun (car l))
+                 (junction (cdr l))))
+       alist))
+
+(define (transform-tumble-json alist)
+  (walk-json-alist
+   alist
+   :val-fun (lambda (s)
+              (if (string? s)
+                  (regexp-replace-all #/\"/ s "\\\\\"")
+                  s))))
 
 (define (main args)
   (let-args (cdr args)
@@ -110,5 +127,6 @@
                          (cadr rest-args)))))
       (let ((response (tumble-random-json id type)))
         (if json
-            (print (construct-json-string response))
+            (print (construct-json-string
+                    (transform-tumble-json response)))
             (show-tumble response id type))))))
